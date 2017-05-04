@@ -23,11 +23,13 @@ func crawl(url string, ch chan string, chFinished chan bool) {
 
     // use CSS selector found with the browser inspector
     // for each, use index and item
-    resp.Find("div").Each(func(index int, item *goquery.Selection) {
+    resp.Find("*").Each(func(index int, item *goquery.Selection) {
         linkTag := item.Find("img")
         link, _ := linkTag.Attr("src")
 
-        ch <- link
+        if link != ""{
+        	ch <- link
+        }
     })
 }
 
@@ -56,6 +58,7 @@ func main() {
             }
     }
 
+    fmt.Println(len(foundImages))
     for url, _ := range foundImages {
             fmt.Println(" - " + url)
     }
