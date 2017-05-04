@@ -79,6 +79,7 @@ func main() {
                     c++
             }
     }
+    close(chImgs)
     pool := len(Images)/5
     if pool > 30 {
         pool = 30
@@ -94,8 +95,6 @@ func main() {
     wg.Wait()
 
     fmt.Println("\n\n[ ---- Done! ---- ]")
-
-    close(chImgs)
 
 }
 
