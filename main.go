@@ -4,11 +4,15 @@ import (
     "fmt"
     "os"
     "github.com/PuerkitoBio/goquery"
+    "io"
+    "net/http"
+    "strings"
 )
 
 
 
 func crawl(url string, ch chan string, chFinished chan bool) {
+	fmt.Println("\n\n============ Fetching Page ============\n\n")
     resp, err := goquery.NewDocument(url)
 
     defer func() {
@@ -34,10 +38,24 @@ func crawl(url string, ch chan string, chFinished chan bool) {
 }
 
 
+func downloadImg(Images []string, ch chan bool) {
+
+    for _, url := range Images {
+    	parts := strings.Split(url, "/")
+		name := parts[len(parts)-1]
+		file, _ := os.Create("tmp/" + name)
+		resp, _ := http.Get(url)
+		io.Copy(file, resp.Body)
+		file.Close()
+		resp.Body.Close()
+    	fmt.Println("====Saving==== " + name)
+    }
+    ch <- true
+}
 
 
 func main() {
-    foundImages := make(map[string]bool)
+    Images := make([]string, 0)
     seedUrls := os.Args[1:]
 
     // Channels
@@ -52,18 +70,26 @@ func main() {
     for c := 0; c < len(seedUrls); {
         select {
             case url := <-chImgs:
-                    foundImages[url] = true
+                    Images = append(Images, url)
             case <-chFinished:
                     c++
             }
     }
+    
+    l := 0
+    ch := make(chan bool)
+	for i:=len(Images)/4; i < len(Images); i+= len(Images)/20 {
+		go downloadImg(Images[l:i], ch)
+		l = i
+	}
 
-    fmt.Println(len(foundImages))
-    for url, _ := range foundImages {
-            fmt.Println(" - " + url)
+
+    select {
+    case <- ch:
+    	fmt.Println("\n\n[ ---- Done! ---- ]")
     }
-
     close(chImgs)
+    close(ch)
 
 }
 
