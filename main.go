@@ -7,6 +7,7 @@ import (
     "io"
     "net/http"
     "strings"
+    "sync"
 )
 
 
@@ -37,10 +38,13 @@ func crawl(url string, ch chan string, chFinished chan bool) {
     })
 }
 
-
-func downloadImg(Images []string, ch chan bool) {
+var wg sync.WaitGroup
+func downloadImg(Images []string) {
 
     for _, url := range Images {
+        if url[:4] != "http"{
+            url = "http:" + url
+        }
     	parts := strings.Split(url, "/")
 		name := parts[len(parts)-1]
 		file, _ := os.Create("tmp/" + name)
@@ -50,7 +54,7 @@ func downloadImg(Images []string, ch chan bool) {
 		resp.Body.Close()
     	fmt.Println("====Saving==== " + name)
     }
-    ch <- true
+    defer wg.Done()
 }
 
 
@@ -75,21 +79,23 @@ func main() {
                     c++
             }
     }
-    
+    pool := len(Images)/5
+    if pool > 30 {
+        pool = 30
+    }
     l := 0
-    ch := make(chan bool)
-	for i:=len(Images)/4; i < len(Images); i+= len(Images)/20 {
-		go downloadImg(Images[l:i], ch)
+	for i:=len(Images)/pool; i < len(Images); i += len(Images)/pool {
+        wg.Add(1)
+		go downloadImg(Images[l:i])
 		l = i
 	}
 
 
-    select {
-    case <- ch:
-    	fmt.Println("\n\n[ ---- Done! ---- ]")
-    }
+    wg.Wait()
+
+    fmt.Println("\n\n[ ---- Done! ---- ]")
+
     close(chImgs)
-    close(ch)
 
 }
 
