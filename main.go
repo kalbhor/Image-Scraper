@@ -13,7 +13,7 @@ import (
 var wg sync.WaitGroup // Used for waiting for channels
 
 func Crawl(url string, ch chan string, chFinished chan bool) {
-	fmt.Printf("\n\n============ Fetching Page ============\n\n")
+	fmt.Printf("\n\nFetching Page..\n")
     resp, err := goquery.NewDocument(url)
 
     defer func() {
@@ -22,8 +22,8 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
     }()
 
     if err != nil {
-        fmt.Printf("ERROR: Failed to crawl \"" + url + "\"")
-        return
+        fmt.Printf("ERROR: Failed to crawl \"" + url + "\"\n\n")
+        os.Exit(3)
     }
 
     // use CSS selector found with the browser inspector
@@ -37,7 +37,7 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
         }
     })
 
-    fmt.Printf("============ Done Crawling ============")
+    fmt.Printf("Done Crawling...")
 }
 
 
@@ -54,7 +54,7 @@ func DownloadImg(Images []string) {
 		io.Copy(file, resp.Body)
 		file.Close()
 		resp.Body.Close()
-    	fmt.Printf("==== Saving %s ====\n", name)
+    	fmt.Printf("Saving %s \n", name)
     }
     defer wg.Done()
 }
@@ -96,7 +96,7 @@ func main() {
     }
     close(chImgs)
     Images = SliceUniq(Images)
-    fmt.Printf("\n\n============ Found %d ============\n\n", len(Images))
+    fmt.Printf("\n\n========= Found %d Unique Images =========\n\n", len(Images))
     pool := len(Images)/3
     if pool > 30 {
         pool = 30
@@ -110,7 +110,7 @@ func main() {
 
 
     wg.Wait()
-    fmt.Printf("\n\n============ Done!! ============\n\n")
+    fmt.Printf("\n\nScraped succesfully\n\n")
 
 }
 
