@@ -10,10 +10,10 @@ import (
     "sync"
 )
 
+var wg sync.WaitGroup // Used for waiting for channels
 
-
-func crawl(url string, ch chan string, chFinished chan bool) {
-	fmt.Println("\n\n============ Fetching Page ============\n\n")
+func Crawl(url string, ch chan string, chFinished chan bool) {
+	fmt.Printf("\n\n============ Fetching Page ============\n\n")
     resp, err := goquery.NewDocument(url)
 
     defer func() {
@@ -22,7 +22,7 @@ func crawl(url string, ch chan string, chFinished chan bool) {
     }()
 
     if err != nil {
-        fmt.Println("ERROR: Failed to crawl \"" + url + "\"")
+        fmt.Printf("ERROR: Failed to crawl \"" + url + "\"")
         return
     }
 
@@ -36,10 +36,12 @@ func crawl(url string, ch chan string, chFinished chan bool) {
         	ch <- link
         }
     })
+
+    fmt.Printf("============ Done Crawling ============")
 }
 
-var wg sync.WaitGroup
-func downloadImg(Images []string) {
+
+func DownloadImg(Images []string) {
 
     for _, url := range Images {
         if url[:4] != "http"{
@@ -52,9 +54,22 @@ func downloadImg(Images []string) {
 		io.Copy(file, resp.Body)
 		file.Close()
 		resp.Body.Close()
-    	fmt.Println("====Saving==== " + name)
+    	fmt.Printf("==== Saving %s ====\n", name)
     }
     defer wg.Done()
+}
+
+func SliceUniq(s []string) []string {
+    for i := 0; i < len(s); i++ {
+        for i2 := i + 1; i2 < len(s); i2++ {
+            if s[i] == s[i2] {
+                // delete
+                s = append(s[:i2], s[i2+1:]...)
+                i2--
+            }
+        }
+    }
+    return s
 }
 
 
@@ -68,7 +83,7 @@ func main() {
 
     // Crawl process (concurrently)
     for _, url := range seedUrls {
-        go crawl(url, chImgs, chFinished)
+        go Crawl(url, chImgs, chFinished)
     }
 
     for c := 0; c < len(seedUrls); {
@@ -80,21 +95,22 @@ func main() {
             }
     }
     close(chImgs)
-    pool := len(Images)/5
+    Images = SliceUniq(Images)
+    fmt.Printf("\n\n============ Found %d ============\n\n", len(Images))
+    pool := len(Images)/3
     if pool > 30 {
         pool = 30
     }
     l := 0
 	for i:=len(Images)/pool; i < len(Images); i += len(Images)/pool {
         wg.Add(1)
-		go downloadImg(Images[l:i])
+		go DownloadImg(Images[l:i])
 		l = i
 	}
 
 
     wg.Wait()
-
-    fmt.Println("\n\n[ ---- Done! ---- ]")
+    fmt.Printf("\n\n============ Done!! ============\n\n")
 
 }
 
