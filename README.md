@@ -3,7 +3,7 @@
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg?style=flat-square)](LICENSE)
 
 
-> ImageScraper is a high performance image scraper written in Golang.
+> A high performance, concurrent Image Scraper written in Golang.
 
 
 ## Installation
@@ -30,6 +30,8 @@ $ ./imagescraper [Folder to save] [URLs]
 
 Found an issue? Post it in the [issue tracker](https://github.com/kalbhor/Image-Scraper/issues). <br> 
 Want to add another awesome feature? [Fork](https://github.com/kalbhor/Image-Scraper/fork) this repository and add your feature, then send a pull request.
+
+##### Contribute : Binaries for Linux required. 
 
 
 ## License
