@@ -11,14 +11,17 @@ import (
 )
 
 var wg sync.WaitGroup // Used for waiting for channels
+const MaxThreads = 30 
 
 func Crawl(url string, ch chan string, chFinished chan bool) {
+
 	fmt.Printf("\n\nFetching Page..\n")
     resp, err := goquery.NewDocument(url)
 
     defer func() {
         // Notify we're done
         chFinished <- true
+        fmt.Printf("Done Crawling...")
     }()
 
     if err != nil {
@@ -26,8 +29,6 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
         os.Exit(3)
     }
 
-    // use CSS selector found with the browser inspector
-    // for each, use index and item
     resp.Find("*").Each(func(index int, item *goquery.Selection) {
         linkTag := item.Find("img")
         link, _ := linkTag.Attr("src")
@@ -36,12 +37,12 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
         	ch <- link
         }
     })
-
-    fmt.Printf("Done Crawling...")
 }
 
 
 func DownloadImg(Images []string) {
+
+    os.Mkdir("tmp", os.FileMode(0522))
 
     for _, url := range Images {
         if url[:4] != "http"{
@@ -95,17 +96,26 @@ func main() {
             }
     }
     close(chImgs)
+
     Images = SliceUniq(Images)
     fmt.Printf("\n\n========= Found %d Unique Images =========\n\n", len(Images))
-    pool := len(Images)/3
-    if pool > 30 {
-        pool = 30
+
+    var i,j,ThreadCount int
+
+    if len(Images)/3 > MaxThreads {
+        ThreadCount = MaxThreads
+    }else if ThreadCount <= 0 {
+        ThreadCount = 1
+        i,j = 1,0
+    }else {
+        ThreadCount = len(Images)/3
+        i,j = len(Images)/ThreadCount,0
     }
-    l := 0
-	for i:=len(Images)/pool; i < len(Images); i += len(Images)/pool {
+
+	for ; i < len(Images) ; i += len(Images)/ThreadCount {
         wg.Add(1)
-		go DownloadImg(Images[l:i])
-		l = i
+		go DownloadImg(Images[j:i])
+		j = i
 	}
 
 
