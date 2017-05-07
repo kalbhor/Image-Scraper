@@ -3,7 +3,7 @@
 [![license](https://img.shields.io/github/license/mashape/apistatus.svg?style=flat-square)](LICENSE)
 
 
-> A high performance, concurrent Image Scraper written in Golang.
+> A high performance, concurrent Image Scraper written in Go.
 
 
 ## Installation
