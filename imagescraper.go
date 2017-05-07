@@ -11,17 +11,14 @@ import (
 )
 
 var wg sync.WaitGroup // Used for waiting for channels
-const MaxThreads = 30 
 
 func Crawl(url string, ch chan string, chFinished chan bool) {
-
 	fmt.Printf("\n\nFetching Page..\n")
     resp, err := goquery.NewDocument(url)
 
     defer func() {
         // Notify we're done
         chFinished <- true
-        fmt.Printf("Done Crawling...")
     }()
 
     if err != nil {
@@ -29,6 +26,8 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
         os.Exit(3)
     }
 
+    // use CSS selector found with the browser inspector
+    // for each, use index and item
     resp.Find("*").Each(func(index int, item *goquery.Selection) {
         linkTag := item.Find("img")
         link, _ := linkTag.Attr("src")
@@ -37,12 +36,14 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
         	ch <- link
         }
     })
+
+    fmt.Printf("Done Crawling...")
 }
 
 
-func DownloadImg(Images []string) {
+func DownloadImg(Images []string, folder string) {
 
-    os.Mkdir("tmp", os.FileMode(0522))
+	os.Mkdir(folder, os.FileMode(0777))
 
     for _, url := range Images {
         if url[:4] != "http"{
@@ -50,12 +51,12 @@ func DownloadImg(Images []string) {
         }
     	parts := strings.Split(url, "/")
 		name := parts[len(parts)-1]
-		file, _ := os.Create("tmp/" + name)
+		file, _ := os.Create(string(folder + "/" + name))
 		resp, _ := http.Get(url)
 		io.Copy(file, resp.Body)
 		file.Close()
 		resp.Body.Close()
-    	fmt.Printf("Saving %s \n", name)
+    	fmt.Printf("Saving %s \n", folder + "/" + name)
     }
     defer wg.Done()
 }
@@ -75,8 +76,15 @@ func SliceUniq(s []string) []string {
 
 
 func main() {
+    
+    if len(os.Args) < 3 {
+    	fmt.Println("ERROR : Less Args\nCommand should be of type : imagescraper [folder to save] [websites]\n\n")
+    	os.Exit(3)  	
+    }
+    
     Images := make([]string, 0)
-    seedUrls := os.Args[1:]
+    Folder := os.Args[1]
+    seedUrls := os.Args[2:]
 
     // Channels
     chImgs := make(chan string)
@@ -84,6 +92,9 @@ func main() {
 
     // Crawl process (concurrently)
     for _, url := range seedUrls {
+        if url[:4] != "http"{
+            url = "http://" + url
+        }
         go Crawl(url, chImgs, chFinished)
     }
 
@@ -96,26 +107,17 @@ func main() {
             }
     }
     close(chImgs)
-
     Images = SliceUniq(Images)
     fmt.Printf("\n\n========= Found %d Unique Images =========\n\n", len(Images))
-
-    var i,j,ThreadCount int
-
-    if len(Images)/3 > MaxThreads {
-        ThreadCount = MaxThreads
-    }else if ThreadCount <= 0 {
-        ThreadCount = 1
-        i,j = 1,0
-    }else {
-        ThreadCount = len(Images)/3
-        i,j = len(Images)/ThreadCount,0
+    pool := len(Images)/3
+    if pool > 30 {
+        pool = 30
     }
-
-	for ; i < len(Images) ; i += len(Images)/ThreadCount {
+    l := 0
+	for i:=len(Images)/pool; i < len(Images); i += len(Images)/pool {
         wg.Add(1)
-		go DownloadImg(Images[j:i])
-		j = i
+		go DownloadImg(Images[l:i], Folder)
+		l = i
 	}
 
 
@@ -123,4 +125,3 @@ func main() {
     fmt.Printf("\n\nScraped succesfully\n\n")
 
 }
-
