@@ -10,16 +10,13 @@ import (
     "sync"
 )
 
-var wg sync.WaitGroup // Used for waiting for channels
 
-func Crawl(url string, ch chan string, chFinished chan bool) {
+var inserts sync.WaitGroup
+var downloads sync.WaitGroup
+
+func Crawl(url string, ch chan string) {
 	fmt.Printf("\n\nFetching Page..\n")
     resp, err := goquery.NewDocument(url)
-
-    defer func() {
-        // Notify we're done
-        chFinished <- true
-    }()
 
     if err != nil {
         fmt.Printf("ERROR: Failed to crawl \"" + url + "\"\n\n")
@@ -37,91 +34,101 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
         }
     })
 
-    fmt.Printf("Done Crawling...")
+    inserts.Done()
 }
 
 
-func DownloadImg(Images []string, folder string) {
-
+func DownloadImg(url string, folder string, sem chan bool) {
 	os.Mkdir(folder, os.FileMode(0777))
 
-    for _, url := range Images {
-        if url[:4] != "http"{
-            url = "http:" + url
-        }
-    	parts := strings.Split(url, "/")
-		name := parts[len(parts)-1]
-		file, _ := os.Create(string(folder + "/" + name))
-		resp, _ := http.Get(url)
-		io.Copy(file, resp.Body)
-		file.Close()
-		resp.Body.Close()
-    	fmt.Printf("Saving %s \n", folder + "/" + name)
+    defer downloads.Done()
+
+    if url[:4] != "http"{
+        url = "http:" + url
     }
-    defer wg.Done()
+	parts := strings.Split(url, "/")
+	name := parts[len(parts)-1]
+	file, err := os.Create(string(folder + "/" + name))
+    defer file.Close()
+    if err != nil {
+        fmt.Printf("%v", err)
+        return
+    }
+	resp, err := http.Get(url)
+    if err != nil {
+        fmt.Printf("%v", err)
+        return
+    }
+	io.Copy(file, resp.Body)
+	resp.Body.Close()
+	fmt.Printf("Saving %s \n", folder + "/" + name)
+
+    <- sem
 }
 
-func SliceUniq(s []string) []string {
-    for i := 0; i < len(s); i++ {
-        for i2 := i + 1; i2 < len(s); i2++ {
-            if s[i] == s[i2] {
-                // delete
-                s = append(s[:i2], s[i2+1:]...)
-                i2--
+func EnsureUnique(in chan string, out chan string) {   
+    allUrls := make(map[string]bool)
+
+    go func() {
+        for thing := range in {
+            if !allUrls[thing] {
+                allUrls[thing] = true
+                fmt.Printf("Enqueuing %s \n", thing)
+                out <- thing
             }
         }
-    }
-    return s
+        close(out)
+    }()
 }
 
+func DownloadImages(in chan string, Folder string) {
+
+    concurrency := 5
+    sem := make(chan bool, concurrency)
+
+    go func() {
+        for ui := range in {
+            sem <- true
+            downloads.Add(1)
+            go DownloadImg(ui, Folder, sem)
+        }
+    }()
+}
+
+func CrawlSites(urls []string, imageUrls chan string){
+    // Crawl process (concurrently)
+    for _, url := range urls {
+        if url[:4] != "http"{
+            url = "http://" + url
+        }
+        inserts.Add(1)
+        go Crawl(url, imageUrls)
+    }
+}
 
 func main() {
-    
     if len(os.Args) < 3 {
     	fmt.Println("ERROR : Less Args\nCommand should be of type : imagescraper [folder to save] [websites]\n\n")
     	os.Exit(3)  	
     }
     
-    Images := make([]string, 0)
     Folder := os.Args[1]
     seedUrls := os.Args[2:]
 
     // Channels
-    chImgs := make(chan string)
-    chFinished := make(chan bool)
+    imageUrls := make(chan string)
+    uniqueImgUrls := make(chan string)
 
-    // Crawl process (concurrently)
-    for _, url := range seedUrls {
-        if url[:4] != "http"{
-            url = "http://" + url
-        }
-        go Crawl(url, chImgs, chFinished)
-    }
+    CrawlSites(seedUrls, imageUrls)
 
-    for c := 0; c < len(seedUrls); {
-        select {
-            case url := <-chImgs:
-                    Images = append(Images, url)
-            case <-chFinished:
-                    c++
-            }
-    }
-    close(chImgs)
-    Images = SliceUniq(Images)
-    fmt.Printf("\n\n========= Found %d Unique Images =========\n\n", len(Images))
-    pool := len(Images)/3
-    if pool > 30 {
-        pool = 30
-    }
-    l := 0
-	for i:=len(Images)/pool; i < len(Images); i += len(Images)/pool {
-        wg.Add(1)
-		go DownloadImg(Images[l:i], Folder)
-		l = i
-	}
+    EnsureUnique(imageUrls, uniqueImgUrls)
 
+    DownloadImages(uniqueImgUrls, Folder)
 
-    wg.Wait()
+    inserts.Wait()
+    close(imageUrls)
+    
+    downloads.Wait()
     fmt.Printf("\n\nScraped succesfully\n\n")
 
 }
