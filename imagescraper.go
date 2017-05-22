@@ -2,30 +2,33 @@ package main
 
 import (
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
-var wg sync.WaitGroup // Used for waiting for channels
+type Sites struct {
+	url    string
+	images []string
+	folder string
+}
 
-func Crawl(url string, ch chan string, chFinished chan bool) {
-	fmt.Printf("\n\nFetching Page..\n")
-	resp, err := goquery.NewDocument(url)
+var crawlers sync.WaitGroup // Used for waiting for channels
+var downloaders sync.WaitGroup
 
-	defer func() {
-		// Notify we're done
-		chFinished <- true
-	}()
-
+func (Site *Sites) Crawl() {
+	defer crawlers.Done()
+	//fmt.Printf("\n\nFetching Page..\n")
+	resp, err := goquery.NewDocument(Site.url)
 	if err != nil {
-		fmt.Printf("ERROR: Failed to crawl \"" + url + "\"\n\n")
+		fmt.Printf("ERROR: Failed to crawl \"" + Site.url + "\"\n\n")
 		os.Exit(3)
 	}
-
 	// use CSS selector found with the browser inspector
 	// for each, use index and item
 	resp.Find("*").Each(func(index int, item *goquery.Selection) {
@@ -33,31 +36,47 @@ func Crawl(url string, ch chan string, chFinished chan bool) {
 		link, _ := linkTag.Attr("src")
 
 		if link != "" {
-			ch <- link
+			Site.images = append(Site.images, link)
 		}
 	})
 
-	fmt.Printf("Done Crawling...")
+	//fmt.Printf("Done Crawling...\n")
+
+	pool := len(Site.images) / 3
+	if pool > 10 {
+		pool = 10
+	}
+	l := 0
+	counter := len(Site.images) / pool
+	for i := counter; i < len(Site.images); i += counter {
+		downloaders.Add(1)
+		go Site.DownloadImg(Site.images[l:i])
+		l = i
+	}
+
+	downloaders.Wait()
 }
 
-func DownloadImg(Images []string, folder string) {
+func (Site *Sites) DownloadImg(images []string) {
 
-	os.Mkdir(folder, os.FileMode(0777))
+	os.Mkdir(Site.folder, os.FileMode(0777))
+	defer downloaders.Done()
 
-	for _, url := range Images {
+	Site.images = SliceUniq(images)
+
+	for _, url := range images {
 		if url[:4] != "http" {
 			url = "http:" + url
 		}
 		parts := strings.Split(url, "/")
 		name := parts[len(parts)-1]
-		file, _ := os.Create(string(folder + "/" + name))
+		file, _ := os.Create(string(Site.folder + "/" + name))
 		resp, _ := http.Get(url)
 		io.Copy(file, resp.Body)
 		file.Close()
 		resp.Body.Close()
-		fmt.Printf("Saving %s \n", folder+"/"+name)
+		fmt.Printf("Saving %s \n", Site.folder+"/"+name)
 	}
-	wg.Done()
 }
 
 func SliceUniq(s []string) []string {
@@ -75,50 +94,30 @@ func SliceUniq(s []string) []string {
 
 func main() {
 
-	if len(os.Args) < 3 {
-		fmt.Println("ERROR : Less Args\nCommand should be of type : imagescraper [folder to save] [websites]\n\n")
+	if len(os.Args) < 2 {
+		fmt.Println("ERROR : Less Args\nCommand should be of type : imagescraper [websites]\n\n")
 		os.Exit(3)
 	}
-
-	Images := make([]string, 0)
-	Folder := os.Args[1]
-	seedUrls := os.Args[2:]
-
-	// Channels
-	chImgs := make(chan string)
-	chFinished := make(chan bool)
+	seedUrls := os.Args[1:]
+	Site := make([]Sites, len(seedUrls))
 
 	// Crawl process (concurrently)
-	for _, url := range seedUrls {
-		if url[:4] != "http" {
-			url = "http://" + url
+	for i, name := range seedUrls {
+		if name[:4] != "http" {
+			name = "http://" + name
 		}
-		go Crawl(url, chImgs, chFinished)
+		u, err := url.Parse(name)
+		if err != nil {
+			fmt.Printf("could not fetch page - %s %v", name, err)
+		}
+		Site[i].folder = u.Host
+		Site[i].url = name
+		crawlers.Add(1)
+		go Site[i].Crawl()
 	}
 
-	for c := 0; c < len(seedUrls); {
-		select {
-		case url := <-chImgs:
-			Images = append(Images, url)
-		case <-chFinished:
-			c++
-		}
-	}
-	close(chImgs)
-	Images = SliceUniq(Images)
-	fmt.Printf("\n\n========= Found %d Unique Images =========\n\n", len(Images))
-	pool := len(Images) / 3
-	if pool > 30 {
-		pool = 30
-	}
-	l := 0
-	for i := len(Images) / pool; i < len(Images); i += len(Images) / pool {
-		wg.Add(1)
-		go DownloadImg(Images[l:i], Folder)
-		l = i
-	}
+	crawlers.Wait()
 
-	wg.Wait()
 	fmt.Printf("\n\nScraped succesfully\n\n")
 
 }
