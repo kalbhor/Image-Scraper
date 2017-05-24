@@ -22,7 +22,7 @@ $ go build imagescraper.go
 ## Usage
 
 ```sh
-$ ./imagescraper [Folder to save] [URLs]
+$ ./imagescraper [URLs]
 ```
 
 

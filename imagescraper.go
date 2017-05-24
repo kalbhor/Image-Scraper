@@ -18,12 +18,13 @@ type Sites struct {
 	folder string
 }
 
-var crawlers sync.WaitGroup // Used for waiting for channels
+var crawlers sync.WaitGroup
 var downloaders sync.WaitGroup
+var verbose bool = false
 
 func (Site *Sites) Crawl() {
 	defer crawlers.Done()
-	//fmt.Printf("\n\nFetching Page..\n")
+
 	resp, err := goquery.NewDocument(Site.url)
 	if err != nil {
 		fmt.Printf("ERROR: Failed to crawl \"" + Site.url + "\"\n\n")
@@ -40,14 +41,16 @@ func (Site *Sites) Crawl() {
 		}
 	})
 
-	//fmt.Printf("Done Crawling...\n")
+	fmt.Printf("%s found %d unique images\n", Site.url, len(Site.images))
 
 	pool := len(Site.images) / 3
 	if pool > 10 {
 		pool = 10
 	}
+
 	l := 0
 	counter := len(Site.images) / pool
+
 	for i := counter; i < len(Site.images); i += counter {
 		downloaders.Add(1)
 		go Site.DownloadImg(Site.images[l:i])
@@ -59,12 +62,13 @@ func (Site *Sites) Crawl() {
 
 func (Site *Sites) DownloadImg(images []string) {
 
-	os.Mkdir(Site.folder, os.FileMode(0777))
 	defer downloaders.Done()
+
+	os.Mkdir(Site.folder, os.FileMode(0777))
 
 	Site.images = SliceUniq(images)
 
-	for _, url := range images {
+	for _, url := range Site.images {
 		if url[:4] != "http" {
 			url = "http:" + url
 		}
@@ -75,7 +79,9 @@ func (Site *Sites) DownloadImg(images []string) {
 		io.Copy(file, resp.Body)
 		file.Close()
 		resp.Body.Close()
+		if verbose == true {
 		fmt.Printf("Saving %s \n", Site.folder+"/"+name)
+		}
 	}
 }
 
@@ -94,11 +100,19 @@ func SliceUniq(s []string) []string {
 
 func main() {
 
+
+	var seedUrls []string
+
 	if len(os.Args) < 2 {
 		fmt.Println("ERROR : Less Args\nCommand should be of type : imagescraper [websites]\n\n")
 		os.Exit(3)
 	}
-	seedUrls := os.Args[1:]
+	if os.Args[1] == "-v" || os.Args[1] == "--verbose" {
+			verbose = true
+			seedUrls = os.Args[2:]
+	}else {
+		seedUrls = os.Args[1:]
+	}
 	Site := make([]Sites, len(seedUrls))
 
 	// Crawl process (concurrently)
