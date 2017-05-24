@@ -5,6 +5,7 @@
 
 > A high performance, concurrent Image Scraper written in Go.
 
+<a href="https://asciinema.org/a/7ijswkoojai84l690qgdhmm2h" target="_blank"><img src="https://asciinema.org/a/7ijswkoojai84l690qgdhmm2h.png" /></a>
 
 ## Installation
 
